@@ -22,10 +22,31 @@ jobs:
         with:
           name: huggingface
           #authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
-      # For now we only test that there are no regressions in building macOS
-      # kernels. Also run tests once we have a macOS runner.
+      # Build Metal kernels
       - name: Build relu kernel
         run: ( cd examples/relu && nix build .\#redistributable.torch29-metal-aarch64-darwin -L )
-      
+
       - name: Build relu metal cpp kernel
         run: ( cd examples/relu-metal-cpp && nix build .\#redistributable.torch29-metal-aarch64-darwin -L )
+
+  # Test Metal kernels on self-hosted runner with GPU access
+  test-metal:
+    name: Test Metal kernels
+    runs-on: [self-hosted, metal, macos, arm64]
+    if: contains(github.labels.*.name, 'metal') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: "Select Xcode"
+        run: sudo xcrun xcode-select -s /Applications/Xcode_26.0.app || true
+      - name: "Install Metal Toolchain"
+        run: xcodebuild -downloadComponent metalToolchain || true
+      - uses: actions/checkout@v6
+      - uses: cachix/install-nix-action@v31
+      - name: Test relu kernel
+        run: |
+          cd examples/relu-metal-cpp
+          nix build .\#redistributable.torch29-metal-aarch64-darwin -L
+          # Note: Test execution requires pytest and torch installation
+          # This step is a placeholder pending full test infrastructure setup
+      - name: Verify MPS availability
+        run: |
+          python3 -c "import torch; print('MPS available:', torch.backends.mps.is_available())"
