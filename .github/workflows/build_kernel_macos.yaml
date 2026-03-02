@@ -29,11 +29,18 @@ jobs:
       - name: Build relu metal cpp kernel
         run: ( cd examples/relu-metal-cpp && nix build .\#redistributable.torch29-metal-aarch64-darwin -L )
 
-  # Test Metal kernels on self-hosted runner with GPU access
+  # Test Metal kernels on self-hosted runner with GPU access.
+  # Requires a self-hosted runner with Apple Silicon GPU and labels:
+  #   [self-hosted, metal, macos, arm64]
+  # For production CI, HF should consider macos-26-large or macos-26-xlarge
+  # GitHub-hosted runners which include GPU access.
   test-metal:
     name: Test Metal kernels
     runs-on: [self-hosted, metal, macos, arm64]
-    if: contains(github.labels.*.name, 'metal') || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'metal'))
     steps:
       - name: "Select Xcode"
         run: sudo xcrun xcode-select -s /Applications/Xcode_26.0.app || true
@@ -41,12 +48,18 @@ jobs:
         run: xcodebuild -downloadComponent metalToolchain || true
       - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
-      - name: Test relu kernel
+      - uses: cachix/cachix-action@v15
+        with:
+          name: huggingface
+      - name: Build relu-metal-cpp kernel
         run: |
           cd examples/relu-metal-cpp
           nix build .\#redistributable.torch29-metal-aarch64-darwin -L
-          # Note: Test execution requires pytest and torch installation
-          # This step is a placeholder pending full test infrastructure setup
       - name: Verify MPS availability
         run: |
-          python3 -c "import torch; print('MPS available:', torch.backends.mps.is_available())"
+          nix develop .\#default -c python3 -c "
+          import torch
+          assert torch.backends.mps.is_available(), 'MPS not available'
+          t = torch.tensor([1.0, 2.0], device='mps')
+          print('MPS OK: tensor on device', t.device)
+          "
