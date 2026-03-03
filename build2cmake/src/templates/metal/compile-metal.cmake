@@ -18,7 +18,15 @@ function(compile_metal_shaders TARGET_NAME METAL_SOURCES EXTRA_INCLUDE_DIRS)
     endif()
 
     # Set Metal compiler flags
-    set(METAL_FLAGS "-std=metal4.0" "-O2")
+    # Use metal3.2 (targeting macOS 15+) rather than metal4.0 (targeting macOS 26+)
+    # to ensure the metallib is loadable on current macOS versions. The Metal
+    # standard version determines the AIR version and minimum macOS deployment
+    # target embedded in the metallib. metal4.0 produces air64_v28 which requires
+    # macOS 26, while metal3.2 produces air64_v27 which works on macOS 15+.
+    if(NOT DEFINED METAL_STD_VERSION)
+        set(METAL_STD_VERSION "metal3.2")
+    endif()
+    set(METAL_FLAGS "-std=${METAL_STD_VERSION}" "-O2")
 
     # Output directory for compiled metallib
     set(METALLIB_OUTPUT_DIR "${CMAKE_BINARY_DIR}/metallib")
